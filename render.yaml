@@ -1,0 +1,65 @@
+# ─────────────────────────────────────────────────────────────────────────────
+# render.yaml – Infrastructure-as-code for Render.com
+#
+# Commit this file to your repo. Render reads it to configure your service
+# automatically when you link the repo (Blueprint deploys).
+#
+# Docs: https://render.com/docs/blueprint-spec
+# ─────────────────────────────────────────────────────────────────────────────
+
+services:
+  - type: web
+    name: youtube-downloader-api
+    runtime: docker             # use our Dockerfile (handles ffmpeg install)
+    dockerfilePath: ./Dockerfile
+    dockerContext: .
+
+    # Render free tier: 512 MB RAM, shared CPU
+    # Upgrade to "starter" ($7/mo) for persistent disk + more RAM
+    plan: free
+
+    # Render injects PORT automatically; our app reads it from .env / env var
+    envVars:
+      - key: APP_NAME
+        value: YouTube Downloader API
+
+      - key: APP_VERSION
+        value: "1.0.0"
+
+      - key: DEBUG
+        value: "false"
+
+      - key: PORT
+        value: "8000"
+
+      # !! IMPORTANT: Set this to your actual frontend URL before going live !!
+      - key: ALLOWED_ORIGINS
+        value: "*"
+
+      - key: RATE_LIMIT_PER_MINUTE
+        value: "10"
+
+      - key: RATE_LIMIT_DOWNLOAD_PER_MINUTE
+        value: "3"
+
+      - key: TEMP_DIR
+        value: app/temp
+
+      - key: MAX_FILE_AGE_MINUTES
+        value: "30"
+
+      - key: DOWNLOAD_TIMEOUT
+        value: "300"
+
+      - key: MAX_PLAYLIST_ITEMS
+        value: "50"
+
+      # Set via Render Dashboard (not here) to keep it out of git:
+      # - key: API_KEY
+      #   sync: false   ← means: Render won't override it if set manually
+
+    # Render's health-check endpoint (must return 200)
+    healthCheckPath: /health
+
+    # Auto-deploy when you push to main branch
+    autoDeploy: true

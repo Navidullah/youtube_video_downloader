@@ -1,0 +1,25 @@
+# ── Web Framework ─────────────────────────────────────────────────────────────
+fastapi==0.115.5
+uvicorn[standard]==0.32.1       # ASGI server (includes websockets + http tools)
+
+# ── yt-dlp ────────────────────────────────────────────────────────────────────
+yt-dlp>=2026.3.17               # Keep reasonably fresh — YouTube changes frequently
+
+# ── Async File I/O ────────────────────────────────────────────────────────────
+aiofiles==24.1.0
+
+# ── Data Validation ───────────────────────────────────────────────────────────
+pydantic==2.10.3
+pydantic-settings==2.6.1        # Required for BaseSettings with .env loading
+
+# ── Rate Limiting ─────────────────────────────────────────────────────────────
+slowapi==0.1.9
+
+# ── Environment Variables ─────────────────────────────────────────────────────
+python-dotenv==1.0.1
+
+# ── HTTP Client (used internally by yt-dlp) ───────────────────────────────────
+httpx==0.28.1
+
+# ── Optional: better JSON performance ─────────────────────────────────────────
+orjson==3.10.12
