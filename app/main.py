@@ -186,8 +186,10 @@ def create_app() -> FastAPI:
 
     @app.get("/debug", tags=["Health"], summary="Diagnostics")
     async def debug():
-        import shutil, os
+        import shutil, os, asyncio
         import urllib.request as _ur
+        import yt_dlp
+
         bgutil_ok = False
         bgutil_info = None
         try:
@@ -196,13 +198,45 @@ def create_app() -> FastAPI:
             bgutil_ok = True
         except Exception as e:
             bgutil_info = str(e)
+
+        # Test yt-dlp format fetch
+        warnings_log = []
+        fmt_count = 0
+        try:
+            class _WarnCap(yt_dlp.YoutubeDL):
+                def to_stderr(self, message):
+                    warnings_log.append(message[:120])
+
+            opts = {
+                "quiet": True, "no_warnings": False,
+                "ignore_no_formats_error": True,
+                "extractor_args": {
+                    "youtube": {"player_client": ["web"]},
+                    "youtubepot-bgutilhttp": {"base_url": ["http://127.0.0.1:4416"]},
+                },
+            }
+
+            def _run():
+                with yt_dlp.YoutubeDL(opts) as ydl:
+                    info = ydl.extract_info("https://youtu.be/dQw4w9WgXcQ", download=False)
+                    fmts = info.get("formats") or []
+                    return [f for f in fmts if f.get("height") and f.get("vcodec","none") != "none"]
+
+            loop = asyncio.get_event_loop()
+            video_fmts = await asyncio.wait_for(loop.run_in_executor(None, _run), timeout=30)
+            fmt_count = len(video_fmts)
+        except Exception as e:
+            warnings_log.append(f"yt-dlp error: {e}")
+
         return {
+            "port_env": os.environ.get("PORT", "not set"),
             "ffmpeg": shutil.which("ffmpeg"),
             "node": shutil.which("node"),
-            "bgutil_server_reachable": bgutil_ok,
+            "bgutil_reachable": bgutil_ok,
             "bgutil_ping": bgutil_info,
             "bgutil_script_exists": os.path.exists("/bgutil/server/build/main.js"),
-            "port_env": os.environ.get("PORT", "not set"),
+            "yt_dlp_video_formats": fmt_count,
+            "warnings": warnings_log[:10],
         }
 
     return app
