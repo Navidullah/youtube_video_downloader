@@ -22,7 +22,7 @@ RUN pip install --no-cache-dir --upgrade pip && \
 FROM node:20-slim AS bgutil-builder
 
 # Clone and compile the bgutil PO token server
-RUN apt-get update && apt-get install -y --no-install-recommends git \
+RUN apt-get update && apt-get install -y --no-install-recommends git ca-certificates \
     && rm -rf /var/lib/apt/lists/*
 
 RUN git clone --depth=1 https://github.com/Brainicism/bgutil-ytdlp-pot-provider.git /bgutil
