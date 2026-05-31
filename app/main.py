@@ -58,22 +58,34 @@ async def lifespan(app: FastAPI):
     logger.info("Temp directory: %s", settings.TEMP_DIR.resolve())
 
     # ── Start bgutil PO token server ─────────────────────────────────────────
-    # bgutil generates YouTube Proof-of-Origin tokens server-side so yt-dlp's
-    # WEB client can bypass bot detection on datacenter IPs — no cookies needed.
-    import shutil, subprocess as _sp
-    bgutil_bin = shutil.which("bgutil-yt-dlp-pot-provider")
-    if bgutil_bin:
+    # bgutil is a Node.js server that generates YouTube Proof-of-Origin tokens.
+    # It runs on port 4416 and yt-dlp calls it automatically via the
+    # bgutil-ytdlp-pot-provider plugin to get fresh tokens for each request.
+    import subprocess as _sp, shutil as _sh, time as _time
+    _bgutil_script = "/bgutil/server/build/main.js"
+    _node = _sh.which("node")
+    if _node and __import__("os").path.exists(_bgutil_script):
         try:
             _sp.Popen(
-                [bgutil_bin],
+                [_node, _bgutil_script],
                 stdout=_sp.DEVNULL,
                 stderr=_sp.DEVNULL,
             )
-            logger.info("bgutil PO token server started on port 4416")
+            # Wait up to 8 seconds for the server to accept connections
+            import urllib.request as _ur
+            for _ in range(8):
+                try:
+                    _ur.urlopen("http://127.0.0.1:4416/ping", timeout=1)
+                    logger.info("bgutil PO token server ready on port 4416")
+                    break
+                except Exception:
+                    _time.sleep(1)
+            else:
+                logger.warning("bgutil server did not respond in time — PO tokens may be unavailable")
         except Exception as exc:
             logger.warning("Could not start bgutil server: %s", exc)
     else:
-        logger.warning("bgutil-yt-dlp-pot-provider not found — PO tokens unavailable")
+        logger.warning("bgutil server not found at %s — PO tokens unavailable", _bgutil_script)
 
     # ── Patch pytubefix to never block on interactive OAuth re-auth ──────────
     # If the cached OAuth token expires/is revoked, pytubefix calls input()

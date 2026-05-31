@@ -47,13 +47,15 @@ def _base_ydl_opts() -> Dict[str, Any]:
         "socket_timeout": 60,
         "retries": 3,
         "fragment_retries": 3,
-        # WEB client + bgutil PO token = full access to all public videos
-        # without cookies or manual authentication
         "extractor_args": {
             "youtube": {
                 "player_client": ["web"],
-                "getpot_bgutil_baseurl": [_BGUTIL_URL],
-            }
+            },
+            # bgutil-ytdlp-pot-provider plugin reads this to get PO tokens
+            # from the bgutil server running on port 4416
+            "youtubepot-bgutilhttp": {
+                "base_url": [_BGUTIL_URL],
+            },
         },
     }
 

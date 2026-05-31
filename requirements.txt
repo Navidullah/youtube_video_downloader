@@ -5,10 +5,11 @@ uvicorn[standard]==0.32.1       # ASGI server (includes websockets + http tools)
 # ── YouTube extraction ────────────────────────────────────────────────────────
 # yt-dlp: primary download engine
 yt-dlp>=2026.3.17
-# yt-dlp-get-pot: PO token plugin — connects yt-dlp to the bgutil server
-# so the WEB client works from any server IP without cookies or OAuth
-yt-dlp-get-pot>=0.3.0
-# pytubefix: lightweight fallback for metadata (no PO token needed for basic info)
+# bgutil-ytdlp-pot-provider: PO token provider for yt-dlp
+# Includes yt-dlp-get-pot framework + bgutil HTTP/script provider plugins
+# The bgutil server (Node.js) is built in Docker and started at runtime
+bgutil-ytdlp-pot-provider>=1.3.0
+# pytubefix: fallback for metadata
 pytubefix>=8.0.0
 
 # ── Async File I/O ────────────────────────────────────────────────────────────

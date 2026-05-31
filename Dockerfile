@@ -1,17 +1,8 @@
 # ─────────────────────────────────────────────────────────────────────────────
-# Multi-stage Dockerfile — YouTube Downloader API
-#
-# Stage 1: Python deps builder
-# Stage 2: Runtime image with ffmpeg + Node.js + bgutil PO token server
-#
-# Why bgutil?
-#   YouTube requires Proof-of-Origin (PO) tokens for web-client requests from
-#   datacenter IPs. bgutil generates these tokens server-side using YouTube's
-#   own JavaScript challenge, without cookies or manual login.
-#   This is the same approach used by production YouTube download services.
+# Multi-stage Dockerfile — YouTube Downloader API with bgutil PO token server
 # ─────────────────────────────────────────────────────────────────────────────
 
-# ── Stage 1: Python builder ───────────────────────────────────────────────────
+# ── Stage 1: Python deps builder ──────────────────────────────────────────────
 FROM python:3.12-slim AS builder
 
 WORKDIR /app
@@ -27,36 +18,45 @@ RUN pip install --no-cache-dir --upgrade pip && \
     pip install --no-cache-dir -r requirements.txt
 
 
-# ── Stage 2: Runtime ──────────────────────────────────────────────────────────
+# ── Stage 2: bgutil server builder ────────────────────────────────────────────
+FROM node:20-slim AS bgutil-builder
+
+# Clone and compile the bgutil PO token server
+RUN apt-get update && apt-get install -y --no-install-recommends git \
+    && rm -rf /var/lib/apt/lists/*
+
+RUN git clone --depth=1 https://github.com/Brainicism/bgutil-ytdlp-pot-provider.git /bgutil
+
+WORKDIR /bgutil/server
+RUN npm ci && npx tsc && npm prune --production
+
+
+# ── Stage 3: Runtime ──────────────────────────────────────────────────────────
 FROM python:3.12-slim AS runner
 
-# Install system deps:
-#   ffmpeg   — video/audio merging and MP3 conversion
-#   curl     — used by Node.js setup script
-#   nodejs   — runtime for bgutil PO token server
+# Install ffmpeg + Node.js runtime (for bgutil server)
 RUN apt-get update && apt-get install -y --no-install-recommends \
-    ffmpeg \
-    curl \
+    ffmpeg curl \
     && curl -fsSL https://deb.nodesource.com/setup_20.x | bash - \
     && apt-get install -y nodejs \
     && rm -rf /var/lib/apt/lists/*
 
-# Install bgutil PO token provider globally
-# This npm package starts a local HTTP server that generates YouTube PO tokens
-# so yt-dlp can use the full WEB client without being bot-detected.
-RUN npm install -g @imputnet/bgutil-yt-dlp-pot-provider 2>/dev/null; exit 0
-
 WORKDIR /app
 
+# Copy Python virtual environment
 COPY --from=builder /opt/venv /opt/venv
 ENV PATH="/opt/venv/bin:$PATH"
 
+# Copy compiled bgutil server
+COPY --from=bgutil-builder /bgutil/server /bgutil/server
+
+# Copy application source
 COPY . .
 RUN mkdir -p app/temp
 
 EXPOSE 8000
 
-HEALTHCHECK --interval=30s --timeout=10s --start-period=15s --retries=3 \
+HEALTHCHECK --interval=30s --timeout=10s --start-period=20s --retries=3 \
     CMD python -c "import urllib.request; urllib.request.urlopen('http://localhost:8000/health')"
 
 CMD ["uvicorn", "app.main:app", \

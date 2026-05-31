@@ -35,8 +35,12 @@ def _info_ydl_opts() -> Dict[str, Any]:
         "extractor_args": {
             "youtube": {
                 "player_client": ["web"],
-                "getpot_bgutil_baseurl": [_BGUTIL_URL],
-            }
+            },
+            # bgutil-ytdlp-pot-provider plugin reads this to connect to the
+            # bgutil PO token HTTP server running on port 4416
+            "youtubepot-bgutilhttp": {
+                "base_url": [_BGUTIL_URL],
+            },
         },
     }
 
