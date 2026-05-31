@@ -54,12 +54,15 @@ COPY --from=bgutil-builder /bgutil/server /bgutil/server
 COPY . .
 RUN mkdir -p app/temp
 
-# Write start script with guaranteed Unix line endings (avoids Windows CRLF issues)
+# Write start script with guaranteed Unix line endings
+# Key fixes:
+#   --port 4416  forces bgutil to 4416 regardless of PORT env var
+#   ${PORT:-8000} lets uvicorn use Render's PORT (e.g. 10000) or 8000 locally
 RUN printf '#!/bin/sh\n\
-PORT=4416 node /bgutil/server/build/main.js &\n\
+node /bgutil/server/build/main.js --port 4416 &\n\
 echo "bgutil started on port 4416"\n\
 sleep 4\n\
-exec uvicorn app.main:app --host 0.0.0.0 --port 8000 --workers 1 --timeout-keep-alive 75\n\
+exec uvicorn app.main:app --host 0.0.0.0 --port ${PORT:-8000} --workers 1 --timeout-keep-alive 75\n\
 ' > /start.sh && chmod +x /start.sh
 
 EXPOSE 8000
