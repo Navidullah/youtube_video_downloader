@@ -34,9 +34,17 @@ logger = get_logger(__name__)
 def _base_ydl_opts() -> Dict[str, Any]:
     """Common yt-dlp options shared by all operations."""
     opts: Dict[str, Any] = {
-        "quiet": True,           # suppress yt-dlp's own console output
+        "quiet": True,
         "no_warnings": True,
-        "socket_timeout": 30,    # network timeout per request
+        "socket_timeout": 30,
+        # android_vr is the only client that returns full 144p–4K DASH formats
+        # from server IPs without needing a PO token or cookies.
+        # android is the fallback for combined (video+audio) 360p streams.
+        "extractor_args": {
+            "youtube": {
+                "player_client": ["android_vr", "android"],
+            }
+        },
     }
     if settings.YT_DLP_COOKIES_FILE:
         opts["cookiefile"] = settings.YT_DLP_COOKIES_FILE

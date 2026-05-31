@@ -56,6 +56,8 @@ def sweep_old_temp_files() -> int:
     deleted = 0
     try:
         for f in settings.TEMP_DIR.iterdir():
+            if f.name == ".gitkeep":
+                continue
             if f.is_file() and f.stat().st_mtime < cutoff:
                 delete_file(f)
                 deleted += 1

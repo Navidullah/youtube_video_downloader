@@ -44,8 +44,8 @@ def _video_format_selector(quality: VideoQuality) -> str:
     Build a yt-dlp format selector string for the requested video quality.
 
     Examples:
-      best  → bestvideo[ext=mp4]+bestaudio[ext=m4a]/bestvideo+bestaudio/best
-      720p  → bestvideo[height<=720][ext=mp4]+bestaudio[ext=m4a]/bestvideo[height<=720]+bestaudio/best[height<=720]
+      best  -> bestvideo[ext=mp4]+bestaudio[ext=m4a]/bestvideo+bestaudio/best
+      720p  -> bestvideo[height<=720][ext=mp4]+bestaudio[ext=m4a]/bestvideo[height<=720]+bestaudio/best[height<=720]
     """
     if quality == VideoQuality.BEST:
         return (
@@ -54,7 +54,7 @@ def _video_format_selector(quality: VideoQuality) -> str:
             "/best"
         )
 
-    height = quality.value.replace("p", "")  # "720p" → "720"
+    height = quality.value.replace("p", "")  # "720p" -> "720"
     return (
         f"bestvideo[height<={height}][ext=mp4]+bestaudio[ext=m4a]"
         f"/bestvideo[height<={height}]+bestaudio"
@@ -121,7 +121,7 @@ async def download_video(url: str, quality: VideoQuality) -> tuple[Path, str]:
         raise RuntimeError("Download completed but output file is missing or empty.")
 
     safe_name = f"{sanitize_filename(title)}.mp4"
-    logger.info("Video downloaded: %s → %s (%d bytes)", title, output_path.name, output_path.stat().st_size)
+    logger.info("Video downloaded: %s -> %s (%d bytes)", title, output_path.name, output_path.stat().st_size)
     return output_path, safe_name
 
 
@@ -180,7 +180,7 @@ async def download_audio(url: str, quality: AudioQuality) -> tuple[Path, str]:
         raise RuntimeError("Audio conversion completed but MP3 file is missing or empty.")
 
     safe_name = f"{sanitize_filename(title)}.mp3"
-    logger.info("Audio downloaded: %s → %s (%d bytes)", title, mp3_path.name, mp3_path.stat().st_size)
+    logger.info("Audio downloaded: %s -> %s (%d bytes)", title, mp3_path.name, mp3_path.stat().st_size)
     return mp3_path, safe_name
 
 
