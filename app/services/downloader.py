@@ -41,7 +41,7 @@ _BGUTIL_URL = "http://127.0.0.1:4416"
 
 def _base_ydl_opts() -> Dict[str, Any]:
     """Common yt-dlp options for all download operations."""
-    import shutil
+    import shutil, pathlib
     opts: Dict[str, Any] = {
         "quiet": True,
         "no_warnings": True,
@@ -57,10 +57,14 @@ def _base_ydl_opts() -> Dict[str, Any]:
             },
         },
     }
-    # Configure Node.js for yt-dlp cipher/n-challenge solving (EJS framework)
     node_path = shutil.which("node")
     if node_path:
         opts["js_runtimes"] = {"node": {"path": node_path}}
+    # Use Google OAuth2 if token is cached (bypasses all IP-based bot detection)
+    oauth2_token = pathlib.Path.home() / ".cache" / "yt-dlp-youtube-oauth2" / "token.json"
+    if oauth2_token.exists():
+        opts["username"] = "oauth2"
+        opts["password"] = ""
     return opts
 
 

@@ -27,7 +27,7 @@ _BGUTIL_URL = "http://127.0.0.1:4416"
 # ── yt-dlp base options ───────────────────────────────────────────────────────
 
 def _info_ydl_opts() -> Dict[str, Any]:
-    import shutil
+    import shutil, pathlib
     opts: Dict[str, Any] = {
         "quiet": True,
         "no_warnings": True,
@@ -35,8 +35,6 @@ def _info_ydl_opts() -> Dict[str, Any]:
         "ignore_no_formats_error": True,
         "extractor_args": {
             "youtube": {
-                # android_vr: returns full 144p-4K DASH formats without PO tokens
-                # web: fallback with bgutil PO tokens if android_vr is blocked
                 "player_client": ["android_vr", "web"],
             },
             "youtubepot-bgutilhttp": {
@@ -44,10 +42,14 @@ def _info_ydl_opts() -> Dict[str, Any]:
             },
         },
     }
-    # Tell yt-dlp to use Node.js for cipher/n-challenge solving (EJS framework)
     node_path = shutil.which("node")
     if node_path:
         opts["js_runtimes"] = {"node": {"path": node_path}}
+    # Use Google OAuth2 if token is cached (bypasses all bot detection)
+    oauth2_token = pathlib.Path.home() / ".cache" / "yt-dlp-youtube-oauth2" / "token.json"
+    if oauth2_token.exists():
+        opts["username"] = "oauth2"
+        opts["password"] = ""
     return opts
 
 

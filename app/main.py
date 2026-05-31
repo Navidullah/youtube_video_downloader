@@ -84,20 +84,21 @@ async def lifespan(app: FastAPI):
     except Exception as exc:
         logger.warning("Could not patch pytubefix OAuth verifier: %s", exc)
 
-    # ── Restore pytubefix OAuth token from env var (for Render deployment) ──
+    # ── Restore yt-dlp OAuth2 token (yt-dlp-youtube-oauth2 plugin) ──────────
     import base64, os, pathlib
-    yt_oauth_b64 = os.environ.get("YT_OAUTH_TOKEN", "").strip()
-    if yt_oauth_b64:
+    ytdlp_oauth2_b64 = os.environ.get("YT_OAUTH2_TOKEN", "").strip()
+    if ytdlp_oauth2_b64:
         try:
-            from pytubefix.innertube import _token_file
-            token_path = pathlib.Path(_token_file)
-            token_path.parent.mkdir(parents=True, exist_ok=True)
-            token_path.write_bytes(base64.b64decode(yt_oauth_b64))
-            logger.info("pytubefix OAuth token restored from YT_OAUTH_TOKEN")
+            # yt-dlp-youtube-oauth2 stores token in ~/.cache/yt-dlp-youtube-oauth2/
+            cache_dir = pathlib.Path.home() / ".cache" / "yt-dlp-youtube-oauth2"
+            cache_dir.mkdir(parents=True, exist_ok=True)
+            token_path = cache_dir / "token.json"
+            token_path.write_bytes(base64.b64decode(ytdlp_oauth2_b64))
+            logger.info("yt-dlp OAuth2 token restored from YT_OAUTH2_TOKEN")
         except Exception as exc:
-            logger.warning("Failed to restore OAuth token: %s", exc)
+            logger.warning("Failed to restore yt-dlp OAuth2 token: %s", exc)
     else:
-        logger.info("No YT_OAUTH_TOKEN set — using unauthenticated requests")
+        logger.info("No YT_OAUTH2_TOKEN set — yt-dlp running unauthenticated")
 
     # Verify ffmpeg is on PATH
     import shutil
