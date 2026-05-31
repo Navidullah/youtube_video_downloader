@@ -57,13 +57,20 @@ async def lifespan(app: FastAPI):
     logger.info("Debug mode: %s", settings.DEBUG)
     logger.info("Temp directory: %s", settings.TEMP_DIR.resolve())
 
-    # Verify yt-dlp is importable
-    try:
-        import yt_dlp
-        logger.info("yt-dlp version: %s", yt_dlp.version.__version__)
-    except ImportError:
-        logger.critical("yt-dlp is NOT installed! Run: pip install yt-dlp")
-        sys.exit(1)
+    # ── Restore pytubefix OAuth token from env var (for Render deployment) ──
+    import base64, os, pathlib
+    yt_oauth_b64 = os.environ.get("YT_OAUTH_TOKEN", "").strip()
+    if yt_oauth_b64:
+        try:
+            from pytubefix.innertube import _token_file
+            token_path = pathlib.Path(_token_file)
+            token_path.parent.mkdir(parents=True, exist_ok=True)
+            token_path.write_bytes(base64.b64decode(yt_oauth_b64))
+            logger.info("pytubefix OAuth token restored from YT_OAUTH_TOKEN")
+        except Exception as exc:
+            logger.warning("Failed to restore OAuth token: %s", exc)
+    else:
+        logger.info("No YT_OAUTH_TOKEN set — using unauthenticated requests")
 
     # Verify ffmpeg is on PATH
     import shutil

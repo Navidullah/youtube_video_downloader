@@ -88,8 +88,17 @@ async def get_video_info(url: str) -> VideoInfoResponse:
     """
 
     def _extract() -> VideoInfoResponse:
+        # Use OAuth if a cached token exists (written at startup from YT_OAUTH_TOKEN)
+        import os, pathlib
+        use_oauth = False
         try:
-            yt = YouTube(url, use_oauth=False, allow_oauth_cache=False)
+            from pytubefix.innertube import _token_file
+            use_oauth = pathlib.Path(_token_file).exists()
+        except Exception:
+            pass
+
+        try:
+            yt = YouTube(url, use_oauth=use_oauth, allow_oauth_cache=use_oauth)
             # Force metadata fetch
             _ = yt.title
         except VideoPrivate:

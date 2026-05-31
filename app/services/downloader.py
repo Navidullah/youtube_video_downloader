@@ -15,6 +15,8 @@ HOW IT WORKS
 """
 
 import asyncio
+import os
+import pathlib
 import subprocess
 import uuid
 from pathlib import Path
@@ -30,6 +32,19 @@ from app.models.requests import AudioQuality, VideoQuality
 from app.utils.validators import sanitize_filename
 
 logger = get_logger(__name__)
+
+
+# ── OAuth helper ─────────────────────────────────────────────────────────────
+
+def _make_yt(url: str) -> YouTube:
+    """Create a YouTube object, using OAuth if a cached token is present."""
+    use_oauth = False
+    try:
+        from pytubefix.innertube import _token_file
+        use_oauth = pathlib.Path(_token_file).exists()
+    except Exception:
+        pass
+    return YouTube(url, use_oauth=use_oauth, allow_oauth_cache=use_oauth)
 
 
 # ── Helpers ───────────────────────────────────────────────────────────────────
@@ -112,7 +127,7 @@ async def download_video(url: str, quality: VideoQuality) -> tuple[Path, str]:
 
     def _run() -> str:
         try:
-            yt = YouTube(url, use_oauth=False, allow_oauth_cache=False)
+            yt = _make_yt(url)
             title = yt.title
         except (VideoPrivate, VideoUnavailable, RegexMatchError) as exc:
             raise ValueError(str(exc))
@@ -182,7 +197,7 @@ async def download_audio(url: str, quality: AudioQuality) -> tuple[Path, str]:
 
     def _run() -> str:
         try:
-            yt = YouTube(url, use_oauth=False, allow_oauth_cache=False)
+            yt = _make_yt(url)
             title = yt.title
         except (VideoPrivate, VideoUnavailable, RegexMatchError) as exc:
             raise ValueError(str(exc))
