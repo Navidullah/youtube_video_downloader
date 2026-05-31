@@ -57,6 +57,23 @@ async def lifespan(app: FastAPI):
     logger.info("Debug mode: %s", settings.DEBUG)
     logger.info("Temp directory: %s", settings.TEMP_DIR.resolve())
 
+    # ── Patch pytubefix to never block on interactive OAuth re-auth ──────────
+    # If the cached OAuth token expires/is revoked, pytubefix calls input()
+    # which would block the server thread forever. Replace the verifier with
+    # one that raises immediately so the fallback chain can try other clients.
+    try:
+        import pytubefix.innertube as _yt_it
+        def _server_oauth_verifier(verification_url: str, user_code: str) -> None:
+            raise RuntimeError(
+                f"OAuth re-authentication required — run auth_setup.py locally "
+                f"and update YT_OAUTH_TOKEN on Render. "
+                f"URL={verification_url} code={user_code}"
+            )
+        _yt_it._default_oauth_verifier = _server_oauth_verifier
+        logger.info("pytubefix OAuth verifier patched (non-blocking)")
+    except Exception as exc:
+        logger.warning("Could not patch pytubefix OAuth verifier: %s", exc)
+
     # ── Restore pytubefix OAuth token from env var (for Render deployment) ──
     import base64, os, pathlib
     yt_oauth_b64 = os.environ.get("YT_OAUTH_TOKEN", "").strip()
