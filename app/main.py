@@ -182,11 +182,28 @@ def create_app() -> FastAPI:
 
     @app.get("/health", tags=["Health"], summary="Health check for Render")
     async def health():
-        """
-        Render pings this endpoint to decide if the service is healthy.
-        Return 200 = healthy, anything else = unhealthy (triggers restart).
-        """
         return {"status": "ok"}
+
+    @app.get("/debug", tags=["Health"], summary="Diagnostics")
+    async def debug():
+        import shutil, os
+        import urllib.request as _ur
+        bgutil_ok = False
+        bgutil_info = None
+        try:
+            resp = _ur.urlopen("http://127.0.0.1:4416/ping", timeout=2)
+            bgutil_info = resp.read().decode()
+            bgutil_ok = True
+        except Exception as e:
+            bgutil_info = str(e)
+        return {
+            "ffmpeg": shutil.which("ffmpeg"),
+            "node": shutil.which("node"),
+            "bgutil_server_reachable": bgutil_ok,
+            "bgutil_ping": bgutil_info,
+            "bgutil_script_exists": os.path.exists("/bgutil/server/build/main.js"),
+            "port_env": os.environ.get("PORT", "not set"),
+        }
 
     return app
 
