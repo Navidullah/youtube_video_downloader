@@ -98,7 +98,7 @@ async def get_video_info(url: str) -> VideoInfoResponse:
             pass
 
         try:
-            yt = YouTube(url, use_oauth=use_oauth, allow_oauth_cache=use_oauth)
+            yt = YouTube(url, client="WEB", use_oauth=use_oauth, allow_oauth_cache=use_oauth)
             # Force metadata fetch
             _ = yt.title
         except VideoPrivate:

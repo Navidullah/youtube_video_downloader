@@ -37,14 +37,20 @@ logger = get_logger(__name__)
 # ── OAuth helper ─────────────────────────────────────────────────────────────
 
 def _make_yt(url: str) -> YouTube:
-    """Create a YouTube object, using OAuth if a cached token is present."""
+    """
+    Create a YouTube object using the WEB client.
+    When an OAuth token is cached (written at startup from YT_OAUTH_TOKEN),
+    use_oauth=True authenticates the WEB client request so it bypasses
+    YouTube's datacenter-IP bot detection while still accessing all public videos.
+    Without OAuth, the WEB client works fine on home/residential IPs.
+    """
     use_oauth = False
     try:
         from pytubefix.innertube import _token_file
         use_oauth = pathlib.Path(_token_file).exists()
     except Exception:
         pass
-    return YouTube(url, use_oauth=use_oauth, allow_oauth_cache=use_oauth)
+    return YouTube(url, client="WEB", use_oauth=use_oauth, allow_oauth_cache=use_oauth)
 
 
 # ── Helpers ───────────────────────────────────────────────────────────────────
