@@ -213,7 +213,7 @@ def create_app() -> FastAPI:
                 "quiet": False, "no_warnings": False,
                 "ignore_no_formats_error": True,
                 "extractor_args": {
-                    "youtube": {"player_client": ["web"]},
+                    "youtube": {"player_client": ["android_vr", "web"]},
                     "youtubepot-bgutilhttp": {"base_url": ["http://127.0.0.1:4416"]},
                 },
                 **({"js_runtimes": {"node": {"path": _node}}} if _node else {}),

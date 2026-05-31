@@ -50,9 +50,8 @@ def _base_ydl_opts() -> Dict[str, Any]:
         "fragment_retries": 3,
         "extractor_args": {
             "youtube": {
-                "player_client": ["web"],
+                "player_client": ["android_vr", "web"],
             },
-            # bgutil HTTP server provides PO tokens
             "youtubepot-bgutilhttp": {
                 "base_url": [_BGUTIL_URL],
             },

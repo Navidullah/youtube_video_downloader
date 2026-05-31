@@ -35,9 +35,10 @@ def _info_ydl_opts() -> Dict[str, Any]:
         "ignore_no_formats_error": True,
         "extractor_args": {
             "youtube": {
-                "player_client": ["web"],
+                # android_vr: returns full 144p-4K DASH formats without PO tokens
+                # web: fallback with bgutil PO tokens if android_vr is blocked
+                "player_client": ["android_vr", "web"],
             },
-            # bgutil HTTP server on port 4416 provides PO tokens
             "youtubepot-bgutilhttp": {
                 "base_url": [_BGUTIL_URL],
             },
