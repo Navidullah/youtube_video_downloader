@@ -36,52 +36,18 @@ logger = get_logger(__name__)
 
 # ── OAuth helper ─────────────────────────────────────────────────────────────
 
-def _has_oauth_token() -> bool:
-    """Return True if a cached OAuth token exists on disk."""
-    try:
-        from pytubefix.innertube import _token_file
-        return pathlib.Path(_token_file).exists()
-    except Exception:
-        return False
-
-
 def _make_yt(url: str) -> YouTube:
     """
-    Try multiple pytubefix client/auth combos until one returns a valid
-    YouTube object with accessible streams.
-
-    Fallback order (server-IP safe):
-      1. default client + OAuth  — TV client with auth, works for many videos
-      2. WEB client, no OAuth    — unauthenticated web, works on some server IPs
-      3. MWEB client, no OAuth   — mobile web, different headers
-    Raises VideoUnavailable if all attempts fail.
+    Create a YouTube object using OAuth if a token is cached, otherwise
+    fall back to unauthenticated WEB client.
+    OAuth token is written at startup from YT_OAUTH_TOKEN env var.
     """
-    has_token = _has_oauth_token()
-
-    attempts = []
-    if has_token:
-        attempts.append({"use_oauth": True,  "allow_oauth_cache": True,  "client": None})
-    attempts.append(    {"use_oauth": False, "allow_oauth_cache": False, "client": "WEB"})
-    attempts.append(    {"use_oauth": False, "allow_oauth_cache": False, "client": "MWEB"})
-
-    last_exc: Exception = VideoUnavailable("all clients failed")
-    for kwargs in attempts:
-        client = kwargs.pop("client")
-        try:
-            if client:
-                yt = YouTube(url, client=client, **kwargs)
-            else:
-                yt = YouTube(url, **kwargs)
-            # Probe title to confirm the video is reachable
-            _ = yt.title
-            return yt
-        except (VideoUnavailable, VideoPrivate):
-            raise          # no point retrying — video itself is restricted
-        except Exception as exc:
-            last_exc = exc
-            continue
-
-    raise last_exc
+    try:
+        from pytubefix.innertube import _token_file
+        use_oauth = pathlib.Path(_token_file).exists()
+    except Exception:
+        use_oauth = False
+    return YouTube(url, use_oauth=use_oauth, allow_oauth_cache=use_oauth)
 
 
 # ── Helpers ───────────────────────────────────────────────────────────────────
