@@ -207,14 +207,16 @@ def create_app() -> FastAPI:
                 def to_stderr(self, message):
                     warnings_log.append(message[:120])
 
+            import shutil as _sh2
+            _node = _sh2.which("node")
             opts = {
-                "quiet": False, "no_warnings": False, "verbose": False,
+                "quiet": False, "no_warnings": False,
                 "ignore_no_formats_error": True,
                 "extractor_args": {
-                    # script mode: runs Node.js directly, no HTTP server needed
                     "youtube": {"player_client": ["web"]},
-                    "youtubepot-bgutilscript": {"server_home": ["/bgutil/server"]},
+                    "youtubepot-bgutilhttp": {"base_url": ["http://127.0.0.1:4416"]},
                 },
+                **({"js_runtimes": {"node": {"path": _node}}} if _node else {}),
                 "logger": type("L", (), {
                     "debug": lambda self,m: warnings_log.append(f"D:{m[:80]}") if "WARNING" in m or "ERROR" in m or "GetPOT" in m or "pot" in m.lower() else None,
                     "warning": lambda self,m: warnings_log.append(f"W:{m[:80]}"),

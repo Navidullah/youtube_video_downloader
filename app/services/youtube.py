@@ -27,7 +27,8 @@ _BGUTIL_URL = "http://127.0.0.1:4416"
 # ── yt-dlp base options ───────────────────────────────────────────────────────
 
 def _info_ydl_opts() -> Dict[str, Any]:
-    return {
+    import shutil
+    opts: Dict[str, Any] = {
         "quiet": True,
         "no_warnings": True,
         "socket_timeout": 30,
@@ -36,13 +37,17 @@ def _info_ydl_opts() -> Dict[str, Any]:
             "youtube": {
                 "player_client": ["web"],
             },
-            # script mode: yt-dlp runs Node.js directly to get PO tokens
-            # no HTTP server needed — uses /bgutil/server scripts
-            "youtubepot-bgutilscript": {
-                "server_home": ["/bgutil/server"],
+            # bgutil HTTP server on port 4416 provides PO tokens
+            "youtubepot-bgutilhttp": {
+                "base_url": [_BGUTIL_URL],
             },
         },
     }
+    # Tell yt-dlp to use Node.js for cipher/n-challenge solving (EJS framework)
+    node_path = shutil.which("node")
+    if node_path:
+        opts["js_runtimes"] = {"node": {"path": node_path}}
+    return opts
 
 
 # ── Format parsing ────────────────────────────────────────────────────────────
