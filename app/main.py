@@ -57,6 +57,24 @@ async def lifespan(app: FastAPI):
     logger.info("Debug mode: %s", settings.DEBUG)
     logger.info("Temp directory: %s", settings.TEMP_DIR.resolve())
 
+    # ── Start bgutil PO token server ─────────────────────────────────────────
+    # bgutil generates YouTube Proof-of-Origin tokens server-side so yt-dlp's
+    # WEB client can bypass bot detection on datacenter IPs — no cookies needed.
+    import shutil, subprocess as _sp
+    bgutil_bin = shutil.which("bgutil-yt-dlp-pot-provider")
+    if bgutil_bin:
+        try:
+            _sp.Popen(
+                [bgutil_bin],
+                stdout=_sp.DEVNULL,
+                stderr=_sp.DEVNULL,
+            )
+            logger.info("bgutil PO token server started on port 4416")
+        except Exception as exc:
+            logger.warning("Could not start bgutil server: %s", exc)
+    else:
+        logger.warning("bgutil-yt-dlp-pot-provider not found — PO tokens unavailable")
+
     # ── Patch pytubefix to never block on interactive OAuth re-auth ──────────
     # If the cached OAuth token expires/is revoked, pytubefix calls input()
     # which would block the server thread forever. Replace the verifier with

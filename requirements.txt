@@ -3,10 +3,13 @@ fastapi==0.115.5
 uvicorn[standard]==0.32.1       # ASGI server (includes websockets + http tools)
 
 # ── YouTube extraction ────────────────────────────────────────────────────────
-# pytubefix: primary tool for info + downloads (bypasses datacenter-IP bot detection)
-pytubefix>=8.0.0
-# yt-dlp: kept as fallback reference; not actively used but useful for debugging
+# yt-dlp: primary download engine
 yt-dlp>=2026.3.17
+# yt-dlp-get-pot: PO token plugin — connects yt-dlp to the bgutil server
+# so the WEB client works from any server IP without cookies or OAuth
+yt-dlp-get-pot>=0.4.0
+# pytubefix: lightweight fallback for metadata (no PO token needed for basic info)
+pytubefix>=8.0.0
 
 # ── Async File I/O ────────────────────────────────────────────────────────────
 aiofiles==24.1.0

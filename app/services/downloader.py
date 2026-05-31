@@ -1,170 +1,91 @@
 """
-Download service — pytubefix for stream selection, ffmpeg for merging/conversion.
+Download service — yt-dlp + bgutil PO token server.
 
 HOW IT WORKS
 ─────────────
-1. pytubefix fetches the direct CDN stream URLs from YouTube
-   (bypasses datacenter-IP bot detection that blocks yt-dlp).
-2. Streams are downloaded to app/temp/ as raw files.
-3. For quality > 360p: video-only + audio-only streams are downloaded
-   separately, then merged by ffmpeg into a single MP4.
-4. For MP3: the best audio stream is downloaded and re-encoded by ffmpeg.
-5. FastAPI's StreamingResponse reads the final file in 1 MB chunks and
-   sends them to the client. A BackgroundTask deletes the temp file after
-   streaming completes.
+1. At startup (main.py), the bgutil PO token server starts on port 4416.
+   bgutil generates YouTube Proof-of-Origin tokens by running YouTube's own
+   JavaScript challenge, so yt-dlp's WEB client is treated as a real browser.
+
+2. yt-dlp's yt-dlp-get-pot plugin reads the bgutil server URL from
+   extractor_args and uses it to get a fresh PO token for each request.
+
+3. yt-dlp downloads the best matching video/audio streams and merges them
+   with ffmpeg into a single MP4 file in app/temp/.
+
+4. FastAPI's StreamingResponse streams the file in 1 MB chunks to the client.
+   A BackgroundTask deletes the temp file after streaming completes.
 """
 
 import asyncio
-import os
-import pathlib
-import subprocess
-import uuid
 from pathlib import Path
-from typing import AsyncGenerator, Optional
+from typing import AsyncGenerator, Any, Dict
 
 import aiofiles
-from pytubefix import YouTube
-from pytubefix.exceptions import VideoUnavailable, VideoPrivate, RegexMatchError
+import yt_dlp
 
 from app.core.config import settings
 from app.core.logging import get_logger
 from app.models.requests import AudioQuality, VideoQuality
+from app.services.youtube import _raise_friendly
+from app.utils.cleanup import generate_temp_path
 from app.utils.validators import sanitize_filename
 
 logger = get_logger(__name__)
 
-
-# ── OAuth helper ─────────────────────────────────────────────────────────────
-
-def _make_yt(url: str) -> YouTube:
-    """
-    Create a YouTube object using OAuth if a token is cached, otherwise
-    fall back to unauthenticated WEB client.
-    OAuth token is written at startup from YT_OAUTH_TOKEN env var.
-    """
-    try:
-        from pytubefix.innertube import _token_file
-        use_oauth = pathlib.Path(_token_file).exists()
-    except Exception:
-        use_oauth = False
-    return YouTube(url, use_oauth=use_oauth, allow_oauth_cache=use_oauth)
+# Port where bgutil PO token server listens (started in main.py lifespan)
+_BGUTIL_URL = "http://127.0.0.1:4416"
 
 
-# ── Helpers ───────────────────────────────────────────────────────────────────
+# ── yt-dlp options ────────────────────────────────────────────────────────────
 
-def _run_ffmpeg(args: list[str]) -> None:
-    """Run ffmpeg synchronously. Raises RuntimeError on non-zero exit."""
-    result = subprocess.run(
-        ["ffmpeg", "-y", *args],
-        capture_output=True,
-        text=True,
-    )
-    if result.returncode != 0:
-        raise RuntimeError(f"ffmpeg error: {result.stderr[-500:]}")
-
-
-def _resolution_to_height(quality: VideoQuality) -> Optional[int]:
-    """Convert VideoQuality enum to pixel height for stream selection."""
-    mapping = {
-        VideoQuality.Q1080: 1080,
-        VideoQuality.Q720: 720,
-        VideoQuality.Q480: 480,
-        VideoQuality.Q360: 360,
-        VideoQuality.Q240: 240,
-        VideoQuality.Q144: 144,
+def _base_ydl_opts() -> Dict[str, Any]:
+    """Common yt-dlp options for all download operations."""
+    return {
+        "quiet": True,
+        "no_warnings": True,
+        "socket_timeout": 60,
+        "retries": 3,
+        "fragment_retries": 3,
+        # WEB client + bgutil PO token = full access to all public videos
+        # without cookies or manual authentication
+        "extractor_args": {
+            "youtube": {
+                "player_client": ["web"],
+                "getpot_bgutil_baseurl": [_BGUTIL_URL],
+            }
+        },
     }
-    return mapping.get(quality)
 
 
-def _pick_video_stream(yt: YouTube, quality: VideoQuality):
-    """
-    Pick the best video stream for the requested quality.
-    Returns a pytubefix Stream object.
-
-    Strategy:
-      - "best": highest adaptive (video-only) stream available
-      - Specific quality: exact match first, next-lowest fallback
-    """
-    target_height = _resolution_to_height(quality)
-
-    # Try adaptive video-only streams first (higher quality)
-    adaptive = yt.streams.filter(only_video=True, file_extension="mp4").order_by("resolution").desc()
-
+def _video_format_selector(quality: VideoQuality) -> str:
+    """Build yt-dlp format selector string for the requested video quality."""
     if quality == VideoQuality.BEST:
-        return adaptive.first() or yt.streams.filter(progressive=True, file_extension="mp4").order_by("resolution").first()
-
-    # Find exact match or nearest lower resolution
-    for s in adaptive:
-        if s.height and s.height <= target_height:
-            return s
-
-    # Fall back to progressive stream
-    progressive = yt.streams.filter(progressive=True, file_extension="mp4").order_by("resolution").desc()
-    for s in progressive:
-        if s.resolution and int(s.resolution.replace("p", "")) <= target_height:
-            return s
-
-    return adaptive.last() or progressive.last()
-
-
-def _pick_audio_stream(yt: YouTube):
-    """Pick the best available audio stream (prefer mp4/m4a for ffmpeg compat)."""
-    stream = (
-        yt.streams.filter(only_audio=True, mime_type="audio/mp4").order_by("abr").desc().first()
-        or yt.streams.filter(only_audio=True).order_by("abr").desc().first()
+        return "bestvideo[ext=mp4]+bestaudio[ext=m4a]/bestvideo+bestaudio/best"
+    height = quality.value.replace("p", "")
+    return (
+        f"bestvideo[height<={height}][ext=mp4]+bestaudio[ext=m4a]"
+        f"/bestvideo[height<={height}]+bestaudio"
+        f"/best[height<={height}]/best"
     )
-    return stream
 
 
 # ── Video Download ────────────────────────────────────────────────────────────
 
 async def download_video(url: str, quality: VideoQuality) -> tuple[Path, str]:
-    """
-    Download a YouTube video as MP4.
-    High-quality streams (>360p) are merged from separate video+audio tracks.
-
-    Returns: (temp_file_path, safe_filename_for_download_header)
-    """
-    uid = uuid.uuid4().hex
-    final_path = settings.TEMP_DIR / f"{uid}.mp4"
+    """Download a YouTube video as MP4. Returns (temp_path, safe_filename)."""
+    output_path = generate_temp_path("mp4")
 
     def _run() -> str:
-        try:
-            yt = _make_yt(url)
-            title = yt.title
-        except (VideoPrivate, VideoUnavailable, RegexMatchError) as exc:
-            raise ValueError(str(exc))
-
-        video_stream = _pick_video_stream(yt, quality)
-        if not video_stream:
-            raise RuntimeError("No suitable video stream found for the requested quality.")
-
-        is_progressive = video_stream.is_progressive
-
-        if is_progressive:
-            # Single combined stream — download directly
-            logger.info("Downloading progressive stream: %s", video_stream.resolution)
-            video_stream.download(output_path=str(settings.TEMP_DIR), filename=f"{uid}.mp4")
-        else:
-            # Adaptive stream — download video + audio separately then merge
-            logger.info("Downloading adaptive video stream: %s", video_stream.resolution)
-            video_tmp = settings.TEMP_DIR / f"{uid}_v.mp4"
-            audio_tmp = settings.TEMP_DIR / f"{uid}_a.mp4"
-
-            video_stream.download(output_path=str(settings.TEMP_DIR), filename=f"{uid}_v.mp4")
-
-            audio_stream = _pick_audio_stream(yt)
-            if audio_stream:
-                audio_stream.download(output_path=str(settings.TEMP_DIR), filename=f"{uid}_a.mp4")
-                # Merge video + audio with ffmpeg (copy streams, no re-encode)
-                _run_ffmpeg(["-i", str(video_tmp), "-i", str(audio_tmp), "-c", "copy", str(final_path)])
-                video_tmp.unlink(missing_ok=True)
-                audio_tmp.unlink(missing_ok=True)
-            else:
-                # No audio stream — just rename the video file
-                video_tmp.rename(final_path)
-
-        return title
+        opts = _base_ydl_opts()
+        opts.update({
+            "format": _video_format_selector(quality),
+            "outtmpl": str(output_path),
+            "merge_output_format": "mp4",
+        })
+        with yt_dlp.YoutubeDL(opts) as ydl:
+            info = ydl.extract_info(url, download=True)
+            return info.get("title", "video") if info else "video"
 
     loop = asyncio.get_event_loop()
     try:
@@ -173,59 +94,46 @@ async def download_video(url: str, quality: VideoQuality) -> tuple[Path, str]:
             timeout=settings.DOWNLOAD_TIMEOUT,
         )
     except asyncio.TimeoutError:
-        final_path.unlink(missing_ok=True)
-        raise TimeoutError("Download timed out. Try a lower quality or a shorter video.")
-    except ValueError as exc:
-        raise PermissionError(str(exc))
+        output_path.unlink(missing_ok=True)
+        raise TimeoutError("Download timed out. Try a lower quality or shorter video.")
+    except yt_dlp.utils.DownloadError as exc:
+        output_path.unlink(missing_ok=True)
+        _raise_friendly(str(exc))
+    except Exception as exc:
+        output_path.unlink(missing_ok=True)
+        raise RuntimeError(f"Download failed: {exc}")
 
-    if not final_path.exists() or final_path.stat().st_size == 0:
+    if not output_path.exists() or output_path.stat().st_size == 0:
         raise RuntimeError("Download completed but output file is missing or empty.")
 
     safe_name = f"{sanitize_filename(title)}.mp4"
-    logger.info("Video downloaded: %s -> %s (%d bytes)", title, final_path.name, final_path.stat().st_size)
-    return final_path, safe_name
+    logger.info("Video downloaded: %s (%d bytes)", output_path.name, output_path.stat().st_size)
+    return output_path, safe_name
 
 
 # ── Audio Download ────────────────────────────────────────────────────────────
 
 async def download_audio(url: str, quality: AudioQuality) -> tuple[Path, str]:
-    """
-    Download the audio track of a YouTube video and convert to MP3.
-
-    Returns: (temp_file_path, safe_filename_for_download_header)
-    """
-    uid = uuid.uuid4().hex
-    raw_path = settings.TEMP_DIR / f"{uid}_raw"   # will get ext from pytubefix
-    mp3_path = settings.TEMP_DIR / f"{uid}.mp3"
+    """Extract audio as MP3. Returns (temp_path, safe_filename)."""
+    import uuid as _uuid
+    stem = _uuid.uuid4().hex
+    base_path = settings.TEMP_DIR / stem
+    mp3_path = settings.TEMP_DIR / f"{stem}.mp3"
 
     def _run() -> str:
-        try:
-            yt = _make_yt(url)
-            title = yt.title
-        except (VideoPrivate, VideoUnavailable, RegexMatchError) as exc:
-            raise ValueError(str(exc))
-
-        audio_stream = _pick_audio_stream(yt)
-        if not audio_stream:
-            raise RuntimeError("No audio stream found for this video.")
-
-        ext = audio_stream.subtype or "mp4"
-        raw_file = settings.TEMP_DIR / f"{uid}_raw.{ext}"
-
-        logger.info("Downloading audio stream: %s kbps %s", audio_stream.abr, ext)
-        audio_stream.download(output_path=str(settings.TEMP_DIR), filename=f"{uid}_raw.{ext}")
-
-        # Convert to MP3 at requested bitrate
-        _run_ffmpeg([
-            "-i", str(raw_file),
-            "-vn",                         # drop video
-            "-ar", "44100",                # sample rate
-            "-ac", "2",                    # stereo
-            "-b:a", f"{quality.value}k",   # bitrate
-            str(mp3_path),
-        ])
-        raw_file.unlink(missing_ok=True)
-        return title
+        opts = _base_ydl_opts()
+        opts.update({
+            "format": "bestaudio/best",
+            "outtmpl": str(base_path),
+            "postprocessors": [{
+                "key": "FFmpegExtractAudio",
+                "preferredcodec": "mp3",
+                "preferredquality": quality.value,
+            }],
+        })
+        with yt_dlp.YoutubeDL(opts) as ydl:
+            info = ydl.extract_info(url, download=True)
+            return info.get("title", "audio") if info else "audio"
 
     loop = asyncio.get_event_loop()
     try:
@@ -236,25 +144,25 @@ async def download_audio(url: str, quality: AudioQuality) -> tuple[Path, str]:
     except asyncio.TimeoutError:
         mp3_path.unlink(missing_ok=True)
         raise TimeoutError("Audio download timed out.")
-    except ValueError as exc:
-        raise PermissionError(str(exc))
+    except yt_dlp.utils.DownloadError as exc:
+        mp3_path.unlink(missing_ok=True)
+        _raise_friendly(str(exc))
+    except Exception as exc:
+        mp3_path.unlink(missing_ok=True)
+        raise RuntimeError(f"Audio download failed: {exc}")
 
     if not mp3_path.exists() or mp3_path.stat().st_size == 0:
         raise RuntimeError("Audio conversion completed but MP3 file is missing or empty.")
 
     safe_name = f"{sanitize_filename(title)}.mp3"
-    logger.info("Audio downloaded: %s -> %s (%d bytes)", title, mp3_path.name, mp3_path.stat().st_size)
+    logger.info("Audio downloaded: %s (%d bytes)", mp3_path.name, mp3_path.stat().st_size)
     return mp3_path, safe_name
 
 
 # ── Streaming helper ──────────────────────────────────────────────────────────
 
 async def file_stream_generator(path: Path) -> AsyncGenerator[bytes, None]:
-    """
-    Async generator that reads a file in CHUNK_SIZE chunks.
-    Used with FastAPI's StreamingResponse — client receives data immediately
-    without waiting for the full file to be in memory.
-    """
+    """Read a file in CHUNK_SIZE chunks for StreamingResponse."""
     async with aiofiles.open(path, "rb") as f:
         while True:
             chunk = await f.read(settings.CHUNK_SIZE)
