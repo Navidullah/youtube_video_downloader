@@ -57,39 +57,15 @@ async def lifespan(app: FastAPI):
     logger.info("Debug mode: %s", settings.DEBUG)
     logger.info("Temp directory: %s", settings.TEMP_DIR.resolve())
 
-    # ── Start bgutil PO token server ─────────────────────────────────────────
-    # bgutil is a Node.js server that generates YouTube Proof-of-Origin tokens.
-    # It runs on port 4416 and yt-dlp calls it automatically via the
-    # bgutil-ytdlp-pot-provider plugin to get fresh tokens for each request.
-    import subprocess as _sp, shutil as _sh, time as _time
-    _bgutil_script = "/bgutil/server/build/main.js"
-    _node = _sh.which("node")
-    if _node and __import__("os").path.exists(_bgutil_script):
-        try:
-            # Force port 4416 — bgutil otherwise reads Render's PORT env var
-            # and would bind to port 8000, hijacking our FastAPI app
-            _env = {**__import__("os").environ, "PORT": "4416"}
-            _sp.Popen(
-                [_node, _bgutil_script],
-                stdout=_sp.DEVNULL,
-                stderr=_sp.DEVNULL,
-                env=_env,
-            )
-            # Wait up to 8 seconds for the server to accept connections
-            import urllib.request as _ur
-            for _ in range(8):
-                try:
-                    _ur.urlopen("http://127.0.0.1:4416/ping", timeout=1)
-                    logger.info("bgutil PO token server ready on port 4416")
-                    break
-                except Exception:
-                    _time.sleep(1)
-            else:
-                logger.warning("bgutil server did not respond in time — PO tokens may be unavailable")
-        except Exception as exc:
-            logger.warning("Could not start bgutil server: %s", exc)
-    else:
-        logger.warning("bgutil server not found at %s — PO tokens unavailable", _bgutil_script)
+    # ── Check bgutil PO token server ─────────────────────────────────────────
+    # bgutil is started BEFORE uvicorn by start.sh on port 4416.
+    # Here we just verify it's reachable.
+    import urllib.request as _ur
+    try:
+        _ur.urlopen("http://127.0.0.1:4416/ping", timeout=2)
+        logger.info("bgutil PO token server is reachable on port 4416")
+    except Exception:
+        logger.warning("bgutil server not reachable on port 4416 — PO tokens unavailable")
 
     # ── Patch pytubefix to never block on interactive OAuth re-auth ──────────
     # If the cached OAuth token expires/is revoked, pytubefix calls input()
