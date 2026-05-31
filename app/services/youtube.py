@@ -12,6 +12,9 @@ How yt-dlp works internally:
 """
 
 import asyncio
+import base64
+import os
+from pathlib import Path
 from typing import Any, Dict, Optional
 
 import yt_dlp
@@ -31,23 +34,55 @@ logger = get_logger(__name__)
 
 # ── yt-dlp option presets ─────────────────────────────────────────────────────
 
+def _resolve_cookies() -> str | None:
+    """
+    Return a path to a valid cookies file, or None.
+
+    Priority order:
+      1. YT_COOKIES_BASE64 env var  — base64-encoded Netscape cookies.txt
+         (best for Render: paste the encoded content as an env variable,
+          the server decodes it to a temp file on first use)
+      2. YT_DLP_COOKIES_FILE        — direct path to an already-present file
+    """
+    cookies_b64 = os.environ.get("YT_COOKIES_BASE64", "").strip()
+    if cookies_b64:
+        cookies_path = settings.TEMP_DIR / "yt_cookies.txt"
+        # Write once; the file survives for the lifetime of this process.
+        if not cookies_path.exists():
+            try:
+                cookies_path.write_bytes(base64.b64decode(cookies_b64))
+                logger.info("YouTube cookies decoded from YT_COOKIES_BASE64 and written to %s", cookies_path)
+            except Exception as exc:
+                logger.warning("Could not decode YT_COOKIES_BASE64: %s", exc)
+                return None
+        return str(cookies_path)
+
+    if settings.YT_DLP_COOKIES_FILE:
+        p = Path(settings.YT_DLP_COOKIES_FILE)
+        if p.exists():
+            return str(p)
+        logger.warning("YT_DLP_COOKIES_FILE points to a missing file: %s", p)
+
+    return None
+
+
 def _base_ydl_opts() -> Dict[str, Any]:
     """Common yt-dlp options shared by all operations."""
     opts: Dict[str, Any] = {
         "quiet": True,
         "no_warnings": True,
         "socket_timeout": 30,
-        # android_vr is the only client that returns full 144p–4K DASH formats
-        # from server IPs without needing a PO token or cookies.
-        # android is the fallback for combined (video+audio) 360p streams.
+        # android_vr returns full 144p-4K DASH formats without PO tokens.
+        # Cookies take precedence and allow web client to also work if provided.
         "extractor_args": {
             "youtube": {
                 "player_client": ["android_vr", "android"],
             }
         },
     }
-    if settings.YT_DLP_COOKIES_FILE:
-        opts["cookiefile"] = settings.YT_DLP_COOKIES_FILE
+    cookies_file = _resolve_cookies()
+    if cookies_file:
+        opts["cookiefile"] = cookies_file
     return opts
 
 
