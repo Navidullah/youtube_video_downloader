@@ -51,9 +51,7 @@ def _base_ydl_opts() -> Dict[str, Any]:
         "extractor_args": {
             "youtube": {
                 "player_client": ["android_vr", "android", "web"],
-            },
-            "youtubepot-bgutilhttp": {
-                "base_url": [_BGUTIL_URL],
+                "player_skip": ["configs"],
             },
         },
     }

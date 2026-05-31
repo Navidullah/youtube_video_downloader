@@ -35,10 +35,13 @@ def _info_ydl_opts() -> Dict[str, Any]:
         "ignore_no_formats_error": True,
         "extractor_args": {
             "youtube": {
+                # android_vr: full DASH formats without PO tokens
+                # android: 360p fallback for any video android_vr can't access
+                # web: last resort (needs bgutil PO tokens for higher quality)
                 "player_client": ["android_vr", "android", "web"],
-            },
-            "youtubepot-bgutilhttp": {
-                "base_url": [_BGUTIL_URL],
+                # Disable GetPOT for android clients — they don't need PO tokens
+                # and GetPOT interference causes empty format lists on server IPs
+                "player_skip": ["configs"],
             },
         },
     }
