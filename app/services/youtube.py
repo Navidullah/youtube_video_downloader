@@ -35,7 +35,7 @@ def _info_ydl_opts() -> Dict[str, Any]:
         "ignore_no_formats_error": True,
         "extractor_args": {
             "youtube": {
-                "player_client": ["android_vr", "web"],
+                "player_client": ["android_vr", "android", "web"],
             },
             "youtubepot-bgutilhttp": {
                 "base_url": [_BGUTIL_URL],
@@ -45,11 +45,6 @@ def _info_ydl_opts() -> Dict[str, Any]:
     node_path = shutil.which("node")
     if node_path:
         opts["js_runtimes"] = {"node": {"path": node_path}}
-    # Use Google OAuth2 if token is cached (bypasses all bot detection)
-    oauth2_token = pathlib.Path.home() / ".cache" / "yt-dlp-youtube-oauth2" / "token.json"
-    if oauth2_token.exists():
-        opts["username"] = "oauth2"
-        opts["password"] = ""
     return opts
 
 
