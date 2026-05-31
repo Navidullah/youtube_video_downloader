@@ -208,12 +208,18 @@ def create_app() -> FastAPI:
                     warnings_log.append(message[:120])
 
             opts = {
-                "quiet": True, "no_warnings": False,
+                "quiet": False, "no_warnings": False, "verbose": False,
                 "ignore_no_formats_error": True,
                 "extractor_args": {
+                    # script mode: runs Node.js directly, no HTTP server needed
                     "youtube": {"player_client": ["web"]},
-                    "youtubepot-bgutilhttp": {"base_url": ["http://127.0.0.1:4416"]},
+                    "youtubepot-bgutilscript": {"server_home": ["/bgutil/server"]},
                 },
+                "logger": type("L", (), {
+                    "debug": lambda self,m: warnings_log.append(f"D:{m[:80]}") if "WARNING" in m or "ERROR" in m or "GetPOT" in m or "pot" in m.lower() else None,
+                    "warning": lambda self,m: warnings_log.append(f"W:{m[:80]}"),
+                    "error": lambda self,m: warnings_log.append(f"E:{m[:80]}"),
+                })(),
             }
 
             def _run():

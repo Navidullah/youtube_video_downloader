@@ -36,10 +36,10 @@ def _info_ydl_opts() -> Dict[str, Any]:
             "youtube": {
                 "player_client": ["web"],
             },
-            # bgutil-ytdlp-pot-provider plugin reads this to connect to the
-            # bgutil PO token HTTP server running on port 4416
-            "youtubepot-bgutilhttp": {
-                "base_url": [_BGUTIL_URL],
+            # script mode: yt-dlp runs Node.js directly to get PO tokens
+            # no HTTP server needed — uses /bgutil/server scripts
+            "youtubepot-bgutilscript": {
+                "server_home": ["/bgutil/server"],
             },
         },
     }
