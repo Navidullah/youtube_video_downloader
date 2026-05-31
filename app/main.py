@@ -66,10 +66,14 @@ async def lifespan(app: FastAPI):
     _node = _sh.which("node")
     if _node and __import__("os").path.exists(_bgutil_script):
         try:
+            # Force port 4416 — bgutil otherwise reads Render's PORT env var
+            # and would bind to port 8000, hijacking our FastAPI app
+            _env = {**__import__("os").environ, "PORT": "4416"}
             _sp.Popen(
                 [_node, _bgutil_script],
                 stdout=_sp.DEVNULL,
                 stderr=_sp.DEVNULL,
+                env=_env,
             )
             # Wait up to 8 seconds for the server to accept connections
             import urllib.request as _ur
