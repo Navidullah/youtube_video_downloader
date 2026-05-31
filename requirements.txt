@@ -7,7 +7,7 @@ uvicorn[standard]==0.32.1       # ASGI server (includes websockets + http tools)
 yt-dlp>=2026.3.17
 # yt-dlp-get-pot: PO token plugin — connects yt-dlp to the bgutil server
 # so the WEB client works from any server IP without cookies or OAuth
-yt-dlp-get-pot>=0.4.0
+yt-dlp-get-pot>=0.3.0
 # pytubefix: lightweight fallback for metadata (no PO token needed for basic info)
 pytubefix>=8.0.0
 
