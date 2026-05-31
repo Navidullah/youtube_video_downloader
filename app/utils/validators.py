@@ -65,11 +65,15 @@ def is_playlist_url(url: str) -> bool:
 
 def sanitize_filename(name: str, max_length: int = 100) -> str:
     """
-    Strip characters that are illegal in file names on Windows/Linux/macOS,
-    then truncate to max_length.
+    Strip characters that are illegal in file names or HTTP headers.
+    HTTP Content-Disposition filenames must be latin-1 safe (no emoji, no
+    non-ASCII chars), so we encode to ASCII with 'ignore' to drop anything
+    outside the ASCII range, then clean up filesystem-illegal characters.
     """
-    # Replace forbidden characters with underscore
-    sanitized = re.sub(r'[<>:"/\\|?*\x00-\x1f]', "_", name)
+    # Drop non-ASCII characters (emoji, Arabic, CJK, etc.) — HTTP headers are latin-1
+    ascii_name = name.encode("ascii", errors="ignore").decode("ascii")
+    # Replace filesystem-illegal characters with underscore
+    sanitized = re.sub(r'[<>:"/\\|?*\x00-\x1f]', "_", ascii_name)
     # Collapse multiple underscores/spaces
     sanitized = re.sub(r"[ _]{2,}", "_", sanitized).strip("_. ")
     return sanitized[:max_length] if sanitized else "download"

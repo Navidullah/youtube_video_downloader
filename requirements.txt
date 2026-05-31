@@ -2,8 +2,11 @@
 fastapi==0.115.5
 uvicorn[standard]==0.32.1       # ASGI server (includes websockets + http tools)
 
-# ── yt-dlp ────────────────────────────────────────────────────────────────────
-yt-dlp>=2026.3.17               # Keep reasonably fresh — YouTube changes frequently
+# ── YouTube extraction ────────────────────────────────────────────────────────
+# pytubefix: primary tool for info + downloads (bypasses datacenter-IP bot detection)
+pytubefix>=8.0.0
+# yt-dlp: kept as fallback reference; not actively used but useful for debugging
+yt-dlp>=2026.3.17
 
 # ── Async File I/O ────────────────────────────────────────────────────────────
 aiofiles==24.1.0
