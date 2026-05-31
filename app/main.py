@@ -220,11 +220,13 @@ def create_app() -> FastAPI:
                 with yt_dlp.YoutubeDL(opts) as ydl:
                     info = ydl.extract_info("https://youtu.be/dQw4w9WgXcQ", download=False)
                     fmts = info.get("formats") or []
-                    return [f for f in fmts if f.get("height") and f.get("vcodec","none") != "none"]
+                    all_fmts = [(f.get("format_id"), f.get("ext"), f.get("height"), f.get("vcodec","")[:8]) for f in fmts[:8]]
+                    video_fmts = [f for f in fmts if f.get("height") and f.get("vcodec","none") != "none"]
+                    return len(video_fmts), len(fmts), all_fmts
 
             loop = asyncio.get_event_loop()
-            video_fmts = await asyncio.wait_for(loop.run_in_executor(None, _run), timeout=30)
-            fmt_count = len(video_fmts)
+            video_count, total_count, sample_fmts = await asyncio.wait_for(loop.run_in_executor(None, _run), timeout=30)
+            fmt_count = video_count
         except Exception as e:
             warnings_log.append(f"yt-dlp error: {e}")
 
@@ -236,6 +238,8 @@ def create_app() -> FastAPI:
             "bgutil_ping": bgutil_info,
             "bgutil_script_exists": os.path.exists("/bgutil/server/build/main.js"),
             "yt_dlp_video_formats": fmt_count,
+            "yt_dlp_total_formats": total_count if 'total_count' in dir() else "error",
+            "yt_dlp_sample": sample_fmts if 'sample_fmts' in dir() else [],
             "warnings": warnings_log[:10],
         }
 
