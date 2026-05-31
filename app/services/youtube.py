@@ -88,19 +88,40 @@ async def get_video_info(url: str) -> VideoInfoResponse:
     """
 
     def _extract() -> VideoInfoResponse:
-        # Use OAuth if a cached token exists (written at startup from YT_OAUTH_TOKEN)
-        import os, pathlib
-        use_oauth = False
-        try:
-            from pytubefix.innertube import _token_file
-            use_oauth = pathlib.Path(_token_file).exists()
-        except Exception:
-            pass
+        import pathlib
+
+        def _has_token() -> bool:
+            try:
+                from pytubefix.innertube import _token_file
+                return pathlib.Path(_token_file).exists()
+            except Exception:
+                return False
+
+        def _build_yt() -> YouTube:
+            """Try multiple client/auth combos until one works."""
+            has_token = _has_token()
+            attempts = []
+            if has_token:
+                attempts.append({"use_oauth": True,  "allow_oauth_cache": True,  "client": None})
+            attempts.append(    {"use_oauth": False, "allow_oauth_cache": False, "client": "WEB"})
+            attempts.append(    {"use_oauth": False, "allow_oauth_cache": False, "client": "MWEB"})
+
+            last_exc: Exception = Exception("all clients failed")
+            for kwargs in attempts:
+                client = kwargs.pop("client")
+                try:
+                    yt = YouTube(url, client=client, **kwargs) if client else YouTube(url, **kwargs)
+                    _ = yt.title  # probe
+                    return yt
+                except (VideoPrivate, VideoUnavailable):
+                    raise
+                except Exception as exc:
+                    last_exc = exc
+                    continue
+            raise last_exc
 
         try:
-            yt = YouTube(url, client="WEB", use_oauth=use_oauth, allow_oauth_cache=use_oauth)
-            # Force metadata fetch
-            _ = yt.title
+            yt = _build_yt()   # title already probed inside _build_yt
         except VideoPrivate:
             raise PermissionError("This video is private and cannot be accessed.")
         except VideoUnavailable:

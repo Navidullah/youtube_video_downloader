@@ -36,21 +36,52 @@ logger = get_logger(__name__)
 
 # ── OAuth helper ─────────────────────────────────────────────────────────────
 
-def _make_yt(url: str) -> YouTube:
-    """
-    Create a YouTube object using the WEB client.
-    When an OAuth token is cached (written at startup from YT_OAUTH_TOKEN),
-    use_oauth=True authenticates the WEB client request so it bypasses
-    YouTube's datacenter-IP bot detection while still accessing all public videos.
-    Without OAuth, the WEB client works fine on home/residential IPs.
-    """
-    use_oauth = False
+def _has_oauth_token() -> bool:
+    """Return True if a cached OAuth token exists on disk."""
     try:
         from pytubefix.innertube import _token_file
-        use_oauth = pathlib.Path(_token_file).exists()
+        return pathlib.Path(_token_file).exists()
     except Exception:
-        pass
-    return YouTube(url, client="WEB", use_oauth=use_oauth, allow_oauth_cache=use_oauth)
+        return False
+
+
+def _make_yt(url: str) -> YouTube:
+    """
+    Try multiple pytubefix client/auth combos until one returns a valid
+    YouTube object with accessible streams.
+
+    Fallback order (server-IP safe):
+      1. default client + OAuth  — TV client with auth, works for many videos
+      2. WEB client, no OAuth    — unauthenticated web, works on some server IPs
+      3. MWEB client, no OAuth   — mobile web, different headers
+    Raises VideoUnavailable if all attempts fail.
+    """
+    has_token = _has_oauth_token()
+
+    attempts = []
+    if has_token:
+        attempts.append({"use_oauth": True,  "allow_oauth_cache": True,  "client": None})
+    attempts.append(    {"use_oauth": False, "allow_oauth_cache": False, "client": "WEB"})
+    attempts.append(    {"use_oauth": False, "allow_oauth_cache": False, "client": "MWEB"})
+
+    last_exc: Exception = VideoUnavailable("all clients failed")
+    for kwargs in attempts:
+        client = kwargs.pop("client")
+        try:
+            if client:
+                yt = YouTube(url, client=client, **kwargs)
+            else:
+                yt = YouTube(url, **kwargs)
+            # Probe title to confirm the video is reachable
+            _ = yt.title
+            return yt
+        except (VideoUnavailable, VideoPrivate):
+            raise          # no point retrying — video itself is restricted
+        except Exception as exc:
+            last_exc = exc
+            continue
+
+    raise last_exc
 
 
 # ── Helpers ───────────────────────────────────────────────────────────────────
